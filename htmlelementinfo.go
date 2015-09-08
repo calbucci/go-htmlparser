@@ -176,8 +176,3 @@ func sorted_contains(slice []string, element string) bool {
 	return sort.SearchStrings(slice, element) >= 0
 }
 
-func initElements() {
-
-	// TODO
-
-}
