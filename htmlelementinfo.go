@@ -16,7 +16,8 @@ func init() {
 	initElements()
 
 	elemsInfo = make(map[string]HtmlElementInfo, len(allElements))
-	for _,hei := range allElements {
+	for _, hei := range allElements {
+		hei.setAttributes(hei.attributesString)
 		elemsInfo[hei.TagName] = hei
 	}
 }
@@ -30,6 +31,7 @@ type HtmlElementInfo struct {
 	PermittedChildrenTypes HtmlElementType // Valid types of elements that can be nested inside this tag
 	PermittedChildrenTags  []string        // Valid children for this tag
 	Attributes             []string
+	attributesString		[]string	// This is temporary to be merged with globalAttributes
 	ObsoleteAttributes     []string
 	ParentContentTypes     HtmlElementType
 	ParentTags             []string
@@ -72,7 +74,7 @@ func (hei *HtmlElementInfo) IsValidParent(parentTagName string) bool {
 	}
 
 	// Finally, check if the content type is allowed
-	if hei.ParentContentTypes == HENone {
+	if hei.ParentContentTypes == HETNone {
 		return false
 	}
 
@@ -108,12 +110,11 @@ func (hei *HtmlElementInfo) setExcludeParentTags(tags string) {
 	hei.ParentTags = convertSemicolonDelimited(tags)
 }
 
-func (hei *HtmlElementInfo) setAttributes(attrs string) {
-	additionalAttributes := convertSemicolonDelimited(attrs)
-	if additionalAttributes == nil {
+func (hei *HtmlElementInfo) setAttributes(attrs []string) {
+	if len(attrs) == 0 {
 		hei.Attributes = globalAttributes
 	} else {
-		hei.Attributes = union(additionalAttributes, globalAttributes)
+		hei.Attributes = union(attrs, globalAttributes)
 
 	}
 }
@@ -153,9 +154,9 @@ func union(slice1, slice2 []string) []string {
 		sort.Strings(slice1)
 		return slice1
 	}
-	for _,e2 := range slice2 {
+	for _, e2 := range slice2 {
 		found := false
-		for _,e1 := range slice1 {
+		for _, e1 := range slice1 {
 			if e1 == e2 {
 				found = true
 				break
@@ -175,4 +176,3 @@ func sorted_contains(slice []string, element string) bool {
 	}
 	return sort.SearchStrings(slice, element) >= 0
 }
-
