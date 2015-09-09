@@ -1,7 +1,6 @@
 package htmlparser
 
 import (
-	"sort"
 	"strings"
 )
 
@@ -31,7 +30,7 @@ type HtmlElementInfo struct {
 	PermittedChildrenTypes HtmlElementType // Valid types of elements that can be nested inside this tag
 	PermittedChildrenTags  []string        // Valid children for this tag
 	Attributes             []string
-	attributesString		[]string	// This is temporary to be merged with globalAttributes
+	attributesString       []string // This is temporary to be merged with globalAttributes
 	ObsoleteAttributes     []string
 	ParentContentTypes     HtmlElementType
 	ParentTags             []string
@@ -132,47 +131,3 @@ func GetElementInfo(tagName string) *HtmlElementInfo {
 	return nil
 }
 
-func convertSemicolonDelimited(text string) []string {
-	if len(text) > 0 {
-		strList := strings.Split(text, ";")
-		if len(strList) > 0 {
-			for i, s := range strList {
-				strList[i] = strings.ToLower(s)
-			}
-			sort.Strings(strList)
-			return strList
-		}
-	}
-	return nil
-}
-
-// union add all the elements from slice2 to slice1 if not present
-func union(slice1, slice2 []string) []string {
-	if slice1 == nil {
-		slice1 = make([]string, len(slice2))
-		copy(slice1, slice2)
-		sort.Strings(slice1)
-		return slice1
-	}
-	for _, e2 := range slice2 {
-		found := false
-		for _, e1 := range slice1 {
-			if e1 == e2 {
-				found = true
-				break
-			}
-		}
-		if !found {
-			slice1 = append(slice1, e2)
-		}
-	}
-	sort.Strings(slice1)
-	return slice1
-}
-
-func sorted_contains(slice []string, element string) bool {
-	if slice == nil || len(slice) == 0 {
-		return false
-	}
-	return sort.SearchStrings(slice, element) >= 0
-}

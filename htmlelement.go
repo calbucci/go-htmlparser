@@ -556,22 +556,3 @@ func internalBuildOpenTag(ei *HtmlElementInfo, tagName string, attributes map[st
 	return n.String()
 
 }
-
-func runesLastIndex(runes []rune, r rune) int {
-
-	for i := len(runes) - 1; i >= 0; i-- {
-		if runes[i] == r {
-			return i
-		}
-	}
-	return -1
-}
-
-func runesIndex(runes []rune, r rune) int {
-	for i, v := range runes {
-		if v == r {
-			return i
-		}
-	}
-	return -1
-}
