@@ -29,19 +29,17 @@ type HtmlParser struct {
 	Ids map[string]bool
 
 	innerTextBuilder *bytes.Buffer
-	InnerText string
-	
-	HasValidSyntax bool
-	HasOnlyValidTags bool
-	HasOnlyValidAttributes bool
-	HasOnlyKnownTags bool
+	InnerText        string
+
+	HasValidSyntax          bool
+	HasOnlyValidTags        bool
+	HasOnlyValidAttributes  bool
+	HasOnlyKnownTags        bool
 	HasDeprecatedAttributes bool
-	HasDeprecatedTags bool
-	
-	SkipComments bool
+	HasDeprecatedTags       bool
+
+	SkipComments    bool
 	PreserveCRLFTab bool
-	
-	
 }
 
 func init() {
@@ -60,57 +58,57 @@ func init() {
 
 func NewParser(html string, textCallback TextCallback, elementCallback ElementCallback, endElementCallback EndElementCallback) HtmlParser {
 	var parser HtmlParser
-	
+
 	parser.OrigHtml = html
 	parser.textCallback = textCallback
 	parser.elementCallback = elementCallback
 	parser.endElementCallback = endElementCallback
-	
+
 	parser.SkipComments = true
 	parser.PreserveCRLFTab = true
-	
+
 	parser.innerTextBuilder = bytes.NewBufferString("")
 
-	return parser	
+	return parser
 }
 
 func (parser *HtmlParser) Parse() bool {
-	if(parser.stop){
+	if parser.stop {
 		return false
 	}
-	
+
 	parser.HasValidSyntax = true
-			parser.HasOnlyValidTags = true
-			parser.HasOnlyValidAttributes = true
-			parser.HasDeprecatedAttributes = false
-			parser.HasDeprecatedTags = false
-			parser.HasOnlyKnownTags = true
-			
-	parser.Errors = make([]string,1)
-	parser.Warnings = make([]string,1)
+	parser.HasOnlyValidTags = true
+	parser.HasOnlyValidAttributes = true
+	parser.HasDeprecatedAttributes = false
+	parser.HasDeprecatedTags = false
+	parser.HasOnlyKnownTags = true
+
+	parser.Errors = make([]string, 1)
+	parser.Warnings = make([]string, 1)
 	parser.Ids = make(map[string]bool, 1)
-	
-	if(parser.OrigHtml == ""){
+
+	if parser.OrigHtml == "" {
 		return true
 	}
-	
-	if(strings.Index(parser.OrigHtml, "<") < 0){
+
+	if strings.Index(parser.OrigHtml, "<") < 0 {
 		parser.callText(parser.OrigHtml, nil)
 	} else {
-		parser.internalParse()	
+		parser.internalParse()
 	}
-	
+
 	parser.InnerText = html.UnescapeString(parser.innerTextBuilder.String())
 	parser.stop = true
-	
+
 	return parser.HasValidSyntax
 }
 
-func (parser *HtmlParser) IsValidStrictHTML401() bool{
+func (parser *HtmlParser) IsValidStrictHTML401() bool {
 	return parser.HasValidSyntax && parser.HasOnlyValidTags && parser.HasOnlyValidAttributes
 }
 
-func (parser *HtmlParser) IsValidStrictHTMLNoDeprecated() bool{
+func (parser *HtmlParser) IsValidStrictHTMLNoDeprecated() bool {
 	return parser.HasValidSyntax && parser.HasOnlyValidTags && parser.HasOnlyValidAttributes && !parser.HasDeprecatedAttributes && !parser.HasDeprecatedTags
 }
 
@@ -122,97 +120,558 @@ func (parser *HtmlParser) Stop() {
 	parser.stop = true
 }
 
-func (p *HtmlParser) CallText(text string, parent *HtmlElement) {
-	
-	if(text == ""){
+func (p *HtmlParser) callText(text string, parent *HtmlElement) {
+
+	if text == "" {
 		return
 	}
-	
-			if (!p.PreserveCRLFTab){
-				if(!hasContent(text)){
-					return
-				}
+
+	if !p.PreserveCRLFTab {
+		if !hasContent(text) {
+			return
+		}
+	}
+
+	if parent != nil && parent.ElementInfo != nil {
+		var childrenTypes = parent.ElementInfo.PermittedChildrenTypes
+		if (childrenTypes & (HETText | HETNRCharData)) == 0 {
+			p.addWarning("Text node inside a " + parent.TagName + " element is not valid")
+		}
+	}
+
+	if parent != nil {
+		_, present := ignoreTextInsideTag[parent.TagNameNS]
+		if present {
+			return
+		}
+	}
+
+	clearText := !p.PreserveCRLFTab
+
+	if parent != nil {
+		switch parent.TagNameNS {
+		case "pre":
+			clearText = false
+		case "script":
+			clearText = false
+		case "style":
+			clearText = false
+		}
+	}
+
+	if clearText && strings.HasPrefix(text, "<!--") {
+		clearText = false
+	}
+
+	if clearText {
+		// Remove all tabs, CR, LF
+		n := bytes.NewBufferString("")
+		for _, r := range text {
+			if r == '\n' {
+				n.WriteRune(' ')
+			} else if r >= rune(32) {
+				n.WriteRune(r)
+			}
+		}
+		text = n.String()
+	}
+
+	if p.textCallback != nil {
+		p.textCallback(text, parent)
+		if p.stop {
+			return
+		}
+	}
+
+	useBlock := false
+	if parent != nil && parent.ElementInfo != nil {
+		if parent.ElementInfo.ElementType == HETFlow {
+			useBlock = true
+		} else {
+			// This is whacky. We messed up on the definition of block-level elements for TR/TD
+			// because of the optional tags.
+			switch parent.TagNameNS {
+			case "tr":
+				useBlock = true
+			case "td":
+				useBlock = true
+			}
+		}
+	}
+
+	l := p.innerTextBuilder.Len()
+	if l < maxInnerTextLengthStored {
+		if useBlock {
+			prevChar := '\n'
+			if l > 0 {
+				prevChar, _ = utf8.DecodeLastRune(p.innerTextBuilder.Bytes())
 			}
 
-			if (parent != nil && parent.ElementInfo != nil){
-				var childrenTypes = parent.ElementInfo.PermittedChildrenTypes;
-				if ((childrenTypes & (HETText | HETNRCharData)) == 0){
-					p.addWarning("Text node inside a " + parent.TagName + " element is not valid")
-				}
+			if prevChar != '\n' && prevChar != '\r' {
+				p.innerTextBuilder.WriteRune('\n')
 			}
+			p.innerTextBuilder.WriteString(text)
+			p.innerTextBuilder.WriteRune('\n')
+		} else {
+			p.innerTextBuilder.WriteString(text)
+		}
+	}
+}
 
-			if (parent != nil) {
-				_,present := ignoreTextInsideTag[parent.TagNameNS]
-				if(present){
-					return
-				}
-			} 
-			
-			clearText := !p.PreserveCRLFTab
+func (hp *HtmlParser) InternalParse() {
+	openedTags := make([]*HtmlElement, 1)
+	openedBlocks := make([]*HtmlElement, 1)
 
-			if (parent != nil) {
-				switch (parent.TagNameNS) {
-					case "pre":
-					clearText = false
-					case "script":
-					clearText = false
-					case "style":
-						clearText = false
-				}
+	anyContent := false
+
+	var parent, blockParent *HtmlElement
+
+	fatal := false
+
+	var text string
+	last := 0
+
+	var c rune
+	runes := []rune(hp.OrigHtml)
+	l := len(runes)
+	len1 := l - 1
+
+	for p := 0; p < l; p++ {
+		if hp.stop {
+			return
+		}
+		c = runes[p]
+
+		if c != '<' {
+			continue
+		}
+
+		diff := p - last
+		if diff >= 1 {
+			parent = nil
+			if hp.HasValidSyntax && len(openedTags) > 0 {
+				parent = openedTags[len(openedTags)-1]
 			}
-			
-			if (clearText && strings.HasPrefix(text, "<!--")){
-					clearText = false
+			text2 := string(runes[last : diff+last])
+			if hasContent(text2) {
+				anyContent = true
 			}
-
-			if (clearText) {
-				// Remove all tags, CR, LF
-				text = trimInBetween(text)
+			hp.callText(text2, parent)
+			if hp.stop {
+				return
 			}
+		}
+		// Yes, this is an open (or closing) tag
+		if p >= len1 {
+			hp.HasValidSyntax = false
+			fatal = true
+			hp.addError("HTML ends with < character")
+			break // the html ends with this open tag
+		}
 
-			if (p.textCallback != nil) {
-				p.textCallback(text, parent)
-				if(p.stop) {
-					return
-					}
+		startElem := p
+		elem := getElementString(startElem)
+		if elem == "" {
+			fatal = true
+			break // fatal syntax error
+		}
+		ecl := utf8.RuneCountInString(elem)
+		p += ecl - 1
+		if ecl <= 2 {
+			// bad HTML, like "<>"
+			hp.addError("Element is empty <>")
+			hp.HasValidSyntax = false
+			continue
+		}
+		last = p + 1
+		parent, blockParent = nil, nil
+		if hp.HasValidSyntax {
+			if len(openedTags) > 0 {
+				parent = openedTags[len(openedTags)-1]
 			}
-
-			useBlock := false
-			if (parent != nil && parent.ElementInfo != nil){
-				if (parent.ElementInfo.ElementType == HETFlow) {
-					useBlock = true
-				} else {
-					// This is whacky. We messed up on the definition of block-level elements for TR/TD
-					// because of the optional tags.
-					switch (parent.TagNameNS) {
-						case "tr":
-							useBlock = true
-						case "td":
-							useBlock = true
-					}
-				}
-			}
-
-			l := p.innerTextBuilder.Len()
-			if (l < maxInnerTextLengthStored) {
-				if (useBlock) {
-					prevChar := '\n'
-					if (l > 0) {
-						prevChar,_ = utf8.DecodeLastRune(p.innerTextBuilder.Bytes())
-					}
-
-					if (prevChar != '\n' && prevChar != '\r') {
-						p.innerTextBuilder.WriteRune('\n')
-					}
-					p.innerTextBuilder.WriteString(text)
-					p.innerTextBuilder.WriteRune('\n')
-				} else {
-					p.innerTextBuilder.WriteString(text)
-				}
+			if len(openedBlocks) > 0 {
+				blockParent = openedBlocks[len(openedBlocks)-1]
 			}
 		}
 
+		if elem[1] == '/' {
+			anyContent = true
+			// This is a closing tag
+			tag := parseClosingTag(elem)
+
+			if hp.HasValidSyntax {
+				unwindForClose(tag, openedTags, openedBlocks)
+				if hp.stop {
+					return
+				}
+			}
+			if hp.endElementCallback != nil {
+				hp.endElementCallback(tag)
+				if hp.stop {
+					return
+				}
+			}
+		} else {
+			if strings.HasPrefix(elem, "<!") {
+				if strings.HasPrefix(elem, "<!--") {
+					p = p - utf8.RuneCountInString(elem) + 1
+					// It's a comment
+					ec := runesIndexRunesStart(runes, []rune("-->"), p+4)
+					if ec == -1 {
+						hp.HasValidSyntax = false
+						fatal = true
+						hp.addError("Missing end comment -->")
+						break
+					}
+					text = string(runes[p : ec+3])
+					if !hp.SkipComments {
+						hp.callText(text, nil)
+						if hp.stop {
+							return
+						}
+					}
+					p += utf8.RuneCountInString(text)
+					last = p
+					p--
+					continue
+				}
+				// Looks like a doctype
+				e2 := strings.ToLower(elem)
+				if strings.HasPrefix(e2, "<!doctype ") {
+					if anyContent {
+						hp.HasValidSyntax = false
+						hp.addError("The doctype declaration must be the first element of the HTML:" + e2)
+					}
+					anyContent = true
+					hp.callText(elem, nil)
+					if hp.stop {
+						return
+					}
+					continue
+				}
+			}
+			anyContent = true
+			he := NewHtmlElement(elem, parent, &hp.errors, &hp.warnings)
+			if he.HasDeprecatedAttribute {
+				hp.HasDeprecatedAttributes = true
+			}
+			if !he.HasOnlyKnownAttributes {
+				hp.HasOnlyValidAttributes = false
+			}
+
+			if he.Id != "" {
+				_, present := hp.Ids[he.Id]
+				if present {
+					hp.addWarning("Duplicate id: " + he.Id + " - Element: " + he.OriginalOpenTag)
+				}
+			}
+
+			if he.SyntaxError {
+				hp.HasValidSyntax = false
+				if he.FatalSyntaxError {
+					fatal = true
+					break
+				}
+				hp.addError("Element syntax error for " + he.OriginalOpenTag)
+				continue
+			}
+
+			// Special cases for script and style
+			if he.TagNameNS == "script" || he.TagNameNS == "style" {
+				startScript := p + 1
+				endScript := 0
+				endTag := ""
+				cp := startScript
+				for {
+					cp = runesIndexRunesStart(runes, "</", cp)
+					if cp == -1 {
+						hp.HasValidSyntax = false
+						fatal = true
+						hp.addError("Missing close tag: " + he.OriginalOpenTag)
+						break
+					}
+					endScript = cp
+					elem = getElementString(cp)
+					if elem == "" {
+						hp.HasValidSyntax = false
+						fatal = true
+						hp.addError("Missing close > for closing tag: " + he.OriginalOpenTag)
+						break
+					}
+					cp += utf8.RuneCountInString(elem)
+					last = cp
+					endTag = parseClosingTag(elem)
+					if endTag == he.TagNameNS {
+						break
+					}
+					endTag = nil
+				}
+				if endTag == nil {
+					p = len
+					break
+				}
+				p = cp - 1
+
+				if hp.ElementCallback != nil {
+					hp.ElementCallback(he, false)
+					if hp.stop {
+						return
+					}
+				}
+
+				hp.callText(string(runes[startScript:endScript]), he)
+				if hp.stop {
+					return
+				}
+
+				if hp.EndElementCallback != nil {
+					hp.EndElementCallback(he.TagNameNS)
+					if hp.stop {
+						return
+					}
+				}
+				continue
+			}
+
+			// We consider this a single element if
+			// 1) the ElementInfo.Single is flagged
+			// 2) It is an unknown element (but not in any namespace)
+			if he.ElementInfo == nil {
+				HasOnlyKnownTags = false
+				// Unknown HTML 4.01 tag
+				if !he.HasNamespace {
+					hp.addWarning("Unknown tag: " + he.TagNameNS)
+					// Really unknown and invalid tag
+					if he.XmlEmptyTag {
+						if hp.ElementCallback != nil {
+							hp.ElementCallback(he, true)
+							if hp.stop {
+								return
+							}
+						}
+					} else {
+						if hp.ElementCallback != nil {
+							hp.ElementCallback(he, false)
+							if hp.stop {
+								return
+							}
+						}
+						if hp.HasValidSyntax {
+							openTags = append(openTags, he)
+						}
+					}
+				} else {
+					// it is unknown, but correctly declared in an XML namespace
+					if he.XmlEmptyTag {
+						if hp.ElementCallback != nil {
+							hp.ElementCallback(he, true)
+							if hp.stop {
+								return
+							}
+						}
+					} else {
+						if hp.ElementCallback != nil {
+							hp.ElementCallback(he, false)
+							if hp.stop {
+								return
+							}
+						}
+						if hp.HasValidSyntax {
+							openedTags = append(openedTags, he)
+						}
+					}
+				}
+			} else {
+				if he.ElementInfo.Obsolete {
+					hp.addWarning("Deprecated Tag: " + he.TagNameNS)
+					hp.HasDeprecatedTags = true
+				}
+
+				// It's  known tag
+				if he.ElementInfo.TagFormatting == HTFSingle || he.XmlEmptyTag {
+					if hp.ElementCallback != nil {
+						hp.ElementCallback(he, true)
+						if hp.stop {
+							return
+						}
+					}
+				} else {
+					if hp.HasValidSyntax {
+						if he.ElementInfo.ElementType == HETFlow {
+							// Some Tags have optional closing (like LI or TD or P)
+							// We assume an automatic closing for these tags on the following situation:
+							// 1) Current element is block-level, and
+							// 2) Parent node is also a block-level and supports optional closing
+							// 3) Current element is the same class as parent element
+							//    or Current element is the closing tag of the parent element
+							if blockParent != nil && blockParent.ElementInfo.TagFormatting == HTFOptionalClosing {
+								if parent != blockParent {
+									hp.addWarning("Invalid parent for " + blockParent.TagName + " (inside of " + parent.TagName + ")")
+								} else {
+									if he.TagName == blockParent.TagName {
+										if hp.EndElementCallback != nil {
+											hp.EndElementCallback(parent.TagNameNS)
+											if hp.stop {
+												return
+											}
+										}
+										openedTags = openedTags[:len(openedTags)-1]
+										openedBlocks = openedBlocks[:len(openedBlocks)-1]
+									}
+								}
+							}
+							if hp.HasValidSyntax {
+								openedBlocks = append(openedBlocks, he)
+							}
+						}
+						if hp.HasValidSyntax {
+							openedTags = append(openedTags, he)
+						}
+					}
+					if hp.ElementCallback != nil {
+						hp.ElementCallback(he, false)
+					}
+
+				}
+			}
+
+		}
+	} // for loop
+
+	if !fatal {
+		// commit the last piece of text
+		parent = nil
+		if hp.HasValidSyntax && len(openedTags) > 0 {
+			parent = openedTags[len(openedTags)-1]
+		}
+
+		if last < len {
+			text = string(runes[last:])
+			hp.callText(text, parent)
+			if hp.stop {
+				return
+			}
+		}
+
+		if hp.HasValidSyntax {
+			for len(openedTags) > 0 {
+				parent = openedTags[len(openedTags)-1]
+				if parent.ElementInfo == nil || parent.ElementInfo.TagFormatting != HTFOptionalClosing {
+					break
+				}
+				if hp.EndElementCallback != nil {
+					hp.EndElementCallback(parent.TagNameNS)
+					if hp.stop {
+						return
+					}
+				}
+				openedTags = openedTags[:len(openedTags)-1]
+				blockParent = nil
+				if len(openedBlocks) > 0 {
+					blockParent = openedBlocks[len(openedBlocks)-1]
+				}
+				if parent == blockParent {
+					openedBlocks = openedBlocks[:len(openedBlocks)-1]
+				}
+			}
+		}
+	}
+
+	if hp.HasValidSyntax {
+		if len(openedBlocks) > 0 {
+			if len(openedTags) != len(openedBlocks) {
+				hp.HasValidSyntax = false
+				hp.addError("Missing " + len(openedTags) + " tag(s) closing.")
+			} else {
+				for len(openedBlocks) > 0 {
+					blockParent = openedBlocks[len(openedBlocks)-1]
+					openedBlocks = openedBlocks[:len(openedBlocks)-1]
+					parent = openedTags[len(openedTags)-1]
+					openedTags = openedTags[:len(openedTags)-1]
+					if parent != blockParent {
+						hp.HasValidSyntax = false
+						hp.addError("Missing a close tag for a block-element. Opened Tag: " + parent.TagNameNS)
+						break
+					}
+					if hp.EndElementCallback != nil {
+						hp.EndElementCallback(parent.TagNameNS)
+						if hp.stop {
+							return
+						}
+					}
+				}
+
+			}
+		} else if openedTags.Count > 0 {
+			hp.addError("Missing " + len(openedTags) + " tag(s) closing.")
+			hp.HasValidSyntax = false
+		}
+	}
+}
 
 
+func (hp *HtmlParser) UnwindForClose(tag string, openedTags, openedBlocks *[]HtmlElement){
+			 var parent,blockParent *HtmlElement
+			if (len(openedTags) > 0) {
+				parent = *openedTags[len(*openedTags) - 1]
+			}
+
+			if (parent == nil){
+				hp.HasValidSyntax = false
+				hp.AddError("Closing tag without opening: " + tag)
+				return
+			}
+
+			 firstParent := parent.TagNameNS
+
+			if (len(*openedBlocks) > 0) {
+				blockParent = *openedBlocks[len(*openedBlocks) - 1]
+			}
+
+			for parent != nil {
+				if (parent.TagNameNS == tag) {
+					openedTags.Pop();
+					*openedTags = *openedTags[:len(*openedTags)-1]
+					if (blockParent != nil && blockParent.TagNameNS == tag){
+						*openedBlocks = openedBlocks[:len(*openedBlocks)-1]
+					}
+					return
+				}
+
+				if (parent.ElementInfo == nil) {
+					break // mismatch
+				}
+
+				// This could be either a tag mismatch, or an optional element missing
+				if (parent.ElementInfo.TagFormatting != HtmlTagFormatting.OptionalClosing) {
+					break // mismatch
+				}
+
+				// inject the optional closing tag
+				if (hp.EndElementCallback != nil){
+					hp.EndElementCallback(parent.TagNameNS)
+					if (hp.stop) {
+						return
+					}
+				}
+
+				if (len(*openedTags) == 0)
+					break
+				*openedTags = *openedTags[:len(*openedTags)-1]
+				if (blockParent == parent){
+					*openedBlocks = *openedBlocks[:len(*openedBlocks)-1]
+					blockParent = nil
+					if (len(*openedBlocks) > 0) {
+						blockParent = *openedBlocks[len(*openedBlocks)-1]
+					}
+				}
+				parent = parent.Parent
+			}
+
+			hp.AddError("Tag mismatch. Open tag: " + firstParent + " / Closing tag: " + tag);
+			hp.HasValidSyntax = false
+
+
+		}
 
 

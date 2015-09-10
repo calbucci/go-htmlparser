@@ -39,12 +39,12 @@ func sorted_contains(slice []string, element string) bool {
 }
 
 func contains(s []string, e string) bool {
-    for _, a := range s {
-        if a == e {
-            return true
-        }
-    }
-    return false
+	for _, a := range s {
+		if a == e {
+			return true
+		}
+	}
+	return false
 }
 
 func convertSemicolonDelimited(text string) []string {
@@ -60,7 +60,6 @@ func convertSemicolonDelimited(text string) []string {
 	}
 	return nil
 }
-
 
 func runesLastIndex(runes []rune, r rune) int {
 
@@ -81,40 +80,58 @@ func runesIndex(runes []rune, r rune) int {
 	return -1
 }
 
+func runesIndexRunesStart(runes []rune, sub []rune, start int) int {
 
-func trimInBetween(str string) string {
-			if(str == "") {
-				return str
+	max := len(runes) - len(sub)
+
+	for ; start < max; start++ {
+
+		match := true
+		for i := 0; i < len(sub); i++ {
+			if runes[start+i] != sub[i] {
+				match = false
+				break
 			}
+		}
+		if match {
+			return start
+		}
 
-			n := bytes.NewBufferString("")
-			
-			lastSpace := true
-
-			for _,r := range str {
-
-			    if (unicode.IsSpace(r) || unicode.IsControl(r)) {
-					if(lastSpace){
-						continue
-					}
-					lastSpace = true
-					n.WriteRune(' ')
-					continue
-                }
-				n.WriteRune(r)
-            }
-			return n.String()
+	}
+	return -1
 }
 
+func trimInBetween(str string) string {
+	if str == "" {
+		return str
+	}
 
+	n := bytes.NewBufferString("")
+
+	lastSpace := true
+
+	for _, r := range str {
+
+		if unicode.IsSpace(r) || unicode.IsControl(r) {
+			if lastSpace {
+				continue
+			}
+			lastSpace = true
+			n.WriteRune(' ')
+			continue
+		}
+		n.WriteRune(r)
+	}
+	return n.String()
+}
 
 func hasContent(text string) bool {
-	if(len(text) == 0){
+	if len(text) == 0 {
 		return false
 	}
-	
-	for i,r := range text{
-		if(!unicode.IsSpace(r)){
+
+	for i, r := range text {
+		if !unicode.IsSpace(r) {
 			return true
 		}
 	}

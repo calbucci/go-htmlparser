@@ -16,8 +16,8 @@ const (
 )
 
 type HtmlElement struct {
-	errors   []string
-	warnings []string
+	errors   *[]string
+	warnings *[]string
 
 	TagName                 string
 	TagNameNS               string
@@ -35,7 +35,7 @@ type HtmlElement struct {
 	OriginalOpenTag         string
 }
 
-func NewHtmlElement(openElement string, parent *HtmlElement, errors, warnings []string) *HtmlElement {
+func NewHtmlElement(openElement string, parent *HtmlElement, errors, warnings *[]string) *HtmlElement {
 
 	he := new(HtmlElement)
 	he.OriginalOpenTag = openElement
@@ -192,11 +192,11 @@ func (he *HtmlElement) checkTag() {
 }
 
 func (he *HtmlElement) addWarning(warning string) {
-	he.warnings = append(he.warnings, warning)
+	*he.warnings = append(*he.warnings, warning)
 }
 
 func (he *HtmlElement) addError(error string) {
-	he.errors = append(he.errors, error)
+	*he.errors = append(*he.errors, error)
 }
 
 func (he *HtmlElement) AddAttribute(attrName, attrVal string) {

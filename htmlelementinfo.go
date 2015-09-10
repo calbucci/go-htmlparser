@@ -130,4 +130,3 @@ func GetElementInfo(tagName string) *HtmlElementInfo {
 	}
 	return nil
 }
-
