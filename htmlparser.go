@@ -58,13 +58,10 @@ func init() {
 	}
 }
 
-func NewParser(html string, textCallback TextCallback, elementCallback ElementCallback, endElementCallback EndElementCallback) HtmlParser {
+func NewParser(html string) HtmlParser {
 	var parser HtmlParser
 
 	parser.OrigHtml = html
-	parser.textCallback = textCallback
-	parser.elementCallback = elementCallback
-	parser.endElementCallback = endElementCallback
 
 	parser.SkipComments = true
 	parser.PreserveCRLFTab = true
@@ -74,10 +71,14 @@ func NewParser(html string, textCallback TextCallback, elementCallback ElementCa
 	return parser
 }
 
-func (parser *HtmlParser) Parse() bool {
+func (parser *HtmlParser) Parse(textCallback TextCallback, elementCallback ElementCallback, endElementCallback EndElementCallback) bool {
 	if parser.stop {
 		return false
 	}
+
+	parser.textCallback = textCallback
+	parser.elementCallback = elementCallback
+	parser.endElementCallback = endElementCallback
 
 	parser.HasValidSyntax = true
 	parser.HasOnlyValidTags = true
