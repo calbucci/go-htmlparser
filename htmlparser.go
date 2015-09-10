@@ -3,6 +3,7 @@ package htmlparser
 import (
 	"bytes"
 	"html"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -16,8 +17,9 @@ type ElementCallback func(*HtmlElement, bool)
 type EndElementCallback func(string)
 
 type HtmlParser struct {
-	OrigHtml string
-	stop     bool
+	OrigHtml  string
+	origRunes []rune
+	stop      bool
 
 	textCallback       TextCallback
 	elementCallback    ElementCallback
@@ -218,7 +220,7 @@ func (p *HtmlParser) callText(text string, parent *HtmlElement) {
 	}
 }
 
-func (hp *HtmlParser) InternalParse() {
+func (hp *HtmlParser) internalParse() {
 	openedTags := make([]*HtmlElement, 1)
 	openedBlocks := make([]*HtmlElement, 1)
 
@@ -232,15 +234,15 @@ func (hp *HtmlParser) InternalParse() {
 	last := 0
 
 	var c rune
-	runes := []rune(hp.OrigHtml)
-	l := len(runes)
+	hp.origRunes = []rune(hp.OrigHtml)
+	l := len(hp.origRunes)
 	len1 := l - 1
 
 	for p := 0; p < l; p++ {
 		if hp.stop {
 			return
 		}
-		c = runes[p]
+		c = hp.origRunes[p]
 
 		if c != '<' {
 			continue
@@ -252,7 +254,7 @@ func (hp *HtmlParser) InternalParse() {
 			if hp.HasValidSyntax && len(openedTags) > 0 {
 				parent = openedTags[len(openedTags)-1]
 			}
-			text2 := string(runes[last : diff+last])
+			text2 := string(hp.origRunes[last : diff+last])
 			if hasContent(text2) {
 				anyContent = true
 			}
@@ -270,7 +272,7 @@ func (hp *HtmlParser) InternalParse() {
 		}
 
 		startElem := p
-		elem := getElementString(startElem)
+		elem := hp.getElementString(startElem)
 		if elem == "" {
 			fatal = true
 			break // fatal syntax error
@@ -300,7 +302,7 @@ func (hp *HtmlParser) InternalParse() {
 			tag := parseClosingTag(elem)
 
 			if hp.HasValidSyntax {
-				unwindForClose(tag, openedTags, openedBlocks)
+				hp.unwindForClose(tag, &openedTags, &openedBlocks)
 				if hp.stop {
 					return
 				}
@@ -316,14 +318,14 @@ func (hp *HtmlParser) InternalParse() {
 				if strings.HasPrefix(elem, "<!--") {
 					p = p - utf8.RuneCountInString(elem) + 1
 					// It's a comment
-					ec := runesIndexRunesStart(runes, []rune("-->"), p+4)
+					ec := runesIndexRunesStart(hp.origRunes, []rune("-->"), p+4)
 					if ec == -1 {
 						hp.HasValidSyntax = false
 						fatal = true
 						hp.addError("Missing end comment -->")
 						break
 					}
-					text = string(runes[p : ec+3])
+					text = string(hp.origRunes[p : ec+3])
 					if !hp.SkipComments {
 						hp.callText(text, nil)
 						if hp.stop {
@@ -351,8 +353,8 @@ func (hp *HtmlParser) InternalParse() {
 				}
 			}
 			anyContent = true
-			he := NewHtmlElement(elem, parent, &hp.errors, &hp.warnings)
-			if he.HasDeprecatedAttribute {
+			he := NewHtmlElement(elem, parent, &hp.Errors, &hp.Warnings)
+			if he.HasDeprecatedAttributes {
 				hp.HasDeprecatedAttributes = true
 			}
 			if !he.HasOnlyKnownAttributes {
@@ -383,7 +385,7 @@ func (hp *HtmlParser) InternalParse() {
 				endTag := ""
 				cp := startScript
 				for {
-					cp = runesIndexRunesStart(runes, "</", cp)
+					cp = runesIndexRunesStart(hp.origRunes, []rune("</"), cp)
 					if cp == -1 {
 						hp.HasValidSyntax = false
 						fatal = true
@@ -391,7 +393,7 @@ func (hp *HtmlParser) InternalParse() {
 						break
 					}
 					endScript = cp
-					elem = getElementString(cp)
+					elem = hp.getElementString(cp)
 					if elem == "" {
 						hp.HasValidSyntax = false
 						fatal = true
@@ -404,28 +406,28 @@ func (hp *HtmlParser) InternalParse() {
 					if endTag == he.TagNameNS {
 						break
 					}
-					endTag = nil
+					endTag = ""
 				}
-				if endTag == nil {
-					p = len
+				if endTag == "" {
+					p = l
 					break
 				}
 				p = cp - 1
 
-				if hp.ElementCallback != nil {
-					hp.ElementCallback(he, false)
+				if hp.elementCallback != nil {
+					hp.elementCallback(he, false)
 					if hp.stop {
 						return
 					}
 				}
 
-				hp.callText(string(runes[startScript:endScript]), he)
+				hp.callText(string(hp.origRunes[startScript:endScript]), he)
 				if hp.stop {
 					return
 				}
 
-				if hp.EndElementCallback != nil {
-					hp.EndElementCallback(he.TagNameNS)
+				if hp.endElementCallback != nil {
+					hp.endElementCallback(he.TagNameNS)
 					if hp.stop {
 						return
 					}
@@ -437,41 +439,41 @@ func (hp *HtmlParser) InternalParse() {
 			// 1) the ElementInfo.Single is flagged
 			// 2) It is an unknown element (but not in any namespace)
 			if he.ElementInfo == nil {
-				HasOnlyKnownTags = false
+				hp.HasOnlyKnownTags = false
 				// Unknown HTML 4.01 tag
 				if !he.HasNamespace {
 					hp.addWarning("Unknown tag: " + he.TagNameNS)
 					// Really unknown and invalid tag
 					if he.XmlEmptyTag {
-						if hp.ElementCallback != nil {
-							hp.ElementCallback(he, true)
+						if hp.elementCallback != nil {
+							hp.elementCallback(he, true)
 							if hp.stop {
 								return
 							}
 						}
 					} else {
-						if hp.ElementCallback != nil {
-							hp.ElementCallback(he, false)
+						if hp.elementCallback != nil {
+							hp.elementCallback(he, false)
 							if hp.stop {
 								return
 							}
 						}
 						if hp.HasValidSyntax {
-							openTags = append(openTags, he)
+							openedTags = append(openedTags, he)
 						}
 					}
 				} else {
 					// it is unknown, but correctly declared in an XML namespace
 					if he.XmlEmptyTag {
-						if hp.ElementCallback != nil {
-							hp.ElementCallback(he, true)
+						if hp.elementCallback != nil {
+							hp.elementCallback(he, true)
 							if hp.stop {
 								return
 							}
 						}
 					} else {
-						if hp.ElementCallback != nil {
-							hp.ElementCallback(he, false)
+						if hp.elementCallback != nil {
+							hp.elementCallback(he, false)
 							if hp.stop {
 								return
 							}
@@ -489,8 +491,8 @@ func (hp *HtmlParser) InternalParse() {
 
 				// It's  known tag
 				if he.ElementInfo.TagFormatting == HTFSingle || he.XmlEmptyTag {
-					if hp.ElementCallback != nil {
-						hp.ElementCallback(he, true)
+					if hp.elementCallback != nil {
+						hp.elementCallback(he, true)
 						if hp.stop {
 							return
 						}
@@ -509,8 +511,8 @@ func (hp *HtmlParser) InternalParse() {
 									hp.addWarning("Invalid parent for " + blockParent.TagName + " (inside of " + parent.TagName + ")")
 								} else {
 									if he.TagName == blockParent.TagName {
-										if hp.EndElementCallback != nil {
-											hp.EndElementCallback(parent.TagNameNS)
+										if hp.endElementCallback != nil {
+											hp.endElementCallback(parent.TagNameNS)
 											if hp.stop {
 												return
 											}
@@ -528,8 +530,8 @@ func (hp *HtmlParser) InternalParse() {
 							openedTags = append(openedTags, he)
 						}
 					}
-					if hp.ElementCallback != nil {
-						hp.ElementCallback(he, false)
+					if hp.elementCallback != nil {
+						hp.elementCallback(he, false)
 					}
 
 				}
@@ -545,8 +547,8 @@ func (hp *HtmlParser) InternalParse() {
 			parent = openedTags[len(openedTags)-1]
 		}
 
-		if last < len {
-			text = string(runes[last:])
+		if last < l {
+			text = string(hp.origRunes[last:])
 			hp.callText(text, parent)
 			if hp.stop {
 				return
@@ -559,8 +561,8 @@ func (hp *HtmlParser) InternalParse() {
 				if parent.ElementInfo == nil || parent.ElementInfo.TagFormatting != HTFOptionalClosing {
 					break
 				}
-				if hp.EndElementCallback != nil {
-					hp.EndElementCallback(parent.TagNameNS)
+				if hp.endElementCallback != nil {
+					hp.endElementCallback(parent.TagNameNS)
 					if hp.stop {
 						return
 					}
@@ -581,7 +583,7 @@ func (hp *HtmlParser) InternalParse() {
 		if len(openedBlocks) > 0 {
 			if len(openedTags) != len(openedBlocks) {
 				hp.HasValidSyntax = false
-				hp.addError("Missing " + len(openedTags) + " tag(s) closing.")
+				hp.addError("Missing " + strconv.Itoa(len(openedTags)) + " tag(s) closing.")
 			} else {
 				for len(openedBlocks) > 0 {
 					blockParent = openedBlocks[len(openedBlocks)-1]
@@ -593,8 +595,8 @@ func (hp *HtmlParser) InternalParse() {
 						hp.addError("Missing a close tag for a block-element. Opened Tag: " + parent.TagNameNS)
 						break
 					}
-					if hp.EndElementCallback != nil {
-						hp.EndElementCallback(parent.TagNameNS)
+					if hp.endElementCallback != nil {
+						hp.endElementCallback(parent.TagNameNS)
 						if hp.stop {
 							return
 						}
@@ -602,76 +604,120 @@ func (hp *HtmlParser) InternalParse() {
 				}
 
 			}
-		} else if openedTags.Count > 0 {
-			hp.addError("Missing " + len(openedTags) + " tag(s) closing.")
+		} else if len(openedTags) > 0 {
+			hp.addError("Missing " + strconv.Itoa(len(openedTags)) + " tag(s) closing.")
 			hp.HasValidSyntax = false
 		}
 	}
 }
 
+func (hp *HtmlParser) unwindForClose(tag string, openedTags, openedBlocks *[]*HtmlElement) {
+	var parent, blockParent *HtmlElement
+	if len(*openedTags) > 0 {
+		parent = (*openedTags)[len(*openedTags)-1]
+	}
 
-func (hp *HtmlParser) UnwindForClose(tag string, openedTags, openedBlocks *[]HtmlElement){
-			 var parent,blockParent *HtmlElement
-			if (len(openedTags) > 0) {
-				parent = *openedTags[len(*openedTags) - 1]
+	if parent == nil {
+		hp.HasValidSyntax = false
+		hp.addError("Closing tag without opening: " + tag)
+		return
+	}
+
+	firstParent := parent.TagNameNS
+
+	if len(*openedBlocks) > 0 {
+		blockParent = (*openedBlocks)[len(*openedBlocks)-1]
+	}
+
+	for parent != nil {
+		if parent.TagNameNS == tag {
+			*openedTags = (*openedTags)[:len(*openedTags)-1]
+			if blockParent != nil && blockParent.TagNameNS == tag {
+				*openedBlocks = (*openedBlocks)[:len(*openedBlocks)-1]
 			}
-
-			if (parent == nil){
-				hp.HasValidSyntax = false
-				hp.AddError("Closing tag without opening: " + tag)
-				return
-			}
-
-			 firstParent := parent.TagNameNS
-
-			if (len(*openedBlocks) > 0) {
-				blockParent = *openedBlocks[len(*openedBlocks) - 1]
-			}
-
-			for parent != nil {
-				if (parent.TagNameNS == tag) {
-					openedTags.Pop();
-					*openedTags = *openedTags[:len(*openedTags)-1]
-					if (blockParent != nil && blockParent.TagNameNS == tag){
-						*openedBlocks = openedBlocks[:len(*openedBlocks)-1]
-					}
-					return
-				}
-
-				if (parent.ElementInfo == nil) {
-					break // mismatch
-				}
-
-				// This could be either a tag mismatch, or an optional element missing
-				if (parent.ElementInfo.TagFormatting != HtmlTagFormatting.OptionalClosing) {
-					break // mismatch
-				}
-
-				// inject the optional closing tag
-				if (hp.EndElementCallback != nil){
-					hp.EndElementCallback(parent.TagNameNS)
-					if (hp.stop) {
-						return
-					}
-				}
-
-				if (len(*openedTags) == 0)
-					break
-				*openedTags = *openedTags[:len(*openedTags)-1]
-				if (blockParent == parent){
-					*openedBlocks = *openedBlocks[:len(*openedBlocks)-1]
-					blockParent = nil
-					if (len(*openedBlocks) > 0) {
-						blockParent = *openedBlocks[len(*openedBlocks)-1]
-					}
-				}
-				parent = parent.Parent
-			}
-
-			hp.AddError("Tag mismatch. Open tag: " + firstParent + " / Closing tag: " + tag);
-			hp.HasValidSyntax = false
-
-
+			return
 		}
 
+		if parent.ElementInfo == nil {
+			break // mismatch
+		}
 
+		// This could be either a tag mismatch, or an optional element missing
+		if parent.ElementInfo.TagFormatting != HTFOptionalClosing {
+			break // mismatch
+		}
+
+		// inject the optional closing tag
+		if hp.endElementCallback != nil {
+			hp.endElementCallback(parent.TagNameNS)
+			if hp.stop {
+				return
+			}
+		}
+
+		if len(*openedTags) == 0 {
+			break
+		}
+		*openedTags = (*openedTags)[:len(*openedTags)-1]
+		if blockParent == parent {
+			*openedBlocks = (*openedBlocks)[:len(*openedBlocks)-1]
+			blockParent = nil
+			if len(*openedBlocks) > 0 {
+				blockParent = (*openedBlocks)[len(*openedBlocks)-1]
+			}
+		}
+		parent = parent.Parent
+	}
+
+	hp.addError("Tag mismatch. Open tag: " + firstParent + " / Closing tag: " + tag)
+	hp.HasValidSyntax = false
+}
+
+func (hp *HtmlParser) addError(error string) {
+	hp.Errors = append(hp.Errors, error)
+}
+
+func (hp *HtmlParser) addWarning(wrn string) {
+	hp.Warnings = append(hp.Warnings, wrn)
+}
+
+func (hp *HtmlParser) getElementString(startPos int) string {
+	var c rune
+	endElem := 0
+	l := len(hp.origRunes)
+	p := startPos
+	for ; p < l; p++ {
+		c = hp.origRunes[p]
+		if c == '>' {
+			endElem = p
+			break
+		}
+		if c == '"' || c == '\'' {
+			p = runesIndexRunesStart(hp.origRunes, []rune{c}, p+1)
+			if p == -1 {
+				// Not well formed HTML: <div attr="value>   (missing quote)
+				logString := hp.origRunes[startPos:]
+
+				if len(logString) > 40 {
+					logString = logString[:40]
+				}
+				hp.addError("Attribute start quote but doesn't end with quote: " + string(logString))
+				hp.HasValidSyntax = false
+				return ""
+			}
+		}
+	}
+
+	if endElem == 0 {
+		hp.HasValidSyntax = false
+		logString := hp.origRunes[startPos:]
+		if len(logString) > 40 {
+			logString = logString[0:40]
+		}
+		hp.addError("Can't find > for tag: " + string(logString))
+		return ""
+	}
+
+	return string(hp.origRunes[startPos : endElem+1])
+
+}

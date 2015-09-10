@@ -130,7 +130,7 @@ func hasContent(text string) bool {
 		return false
 	}
 
-	for i, r := range text {
+	for _, r := range text {
 		if !unicode.IsSpace(r) {
 			return true
 		}
