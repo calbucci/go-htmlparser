@@ -35,7 +35,8 @@ func sorted_contains(slice []string, element string) bool {
 	if slice == nil || len(slice) == 0 {
 		return false
 	}
-	return sort.SearchStrings(slice, element) >= 0
+	pos := sort.SearchStrings(slice, element)
+	return pos != len(slice) && slice[pos] == element
 }
 
 func contains(s []string, e string) bool {
@@ -83,8 +84,11 @@ func runesIndex(runes []rune, r rune) int {
 func runesIndexRunesStart(runes []rune, sub []rune, start int) int {
 
 	max := len(runes) - len(sub)
+	if(len(sub)==0 || max < 0){
+		return -1
+	}
 
-	for ; start < max; start++ {
+	for ; start <= max; start++ {
 
 		match := true
 		for i := 0; i < len(sub); i++ {
@@ -108,10 +112,9 @@ func trimInBetween(str string) string {
 
 	n := bytes.NewBufferString("")
 
-	lastSpace := true
+	lastSpace := false
 
 	for _, r := range str {
-
 		if unicode.IsSpace(r) || unicode.IsControl(r) {
 			if lastSpace {
 				continue
@@ -121,6 +124,7 @@ func trimInBetween(str string) string {
 			continue
 		}
 		n.WriteRune(r)
+		lastSpace = false
 	}
 	return n.String()
 }
@@ -131,7 +135,7 @@ func hasContent(text string) bool {
 	}
 
 	for _, r := range text {
-		if !unicode.IsSpace(r) {
+		if !unicode.IsSpace(r) && !unicode.IsControl(r) {
 			return true
 		}
 	}
