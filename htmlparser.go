@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
+	//"fmt"
 )
 
 const maxInnerTextLengthStored = 65500
@@ -222,8 +223,8 @@ func (p *HtmlParser) callText(text string, parent *HtmlElement) {
 }
 
 func (hp *HtmlParser) internalParse() {
-	openedTags := make([]*HtmlElement, 1)
-	openedBlocks := make([]*HtmlElement, 1)
+	openedTags := make([]*HtmlElement, 0)
+	openedBlocks := make([]*HtmlElement, 0)
 
 	anyContent := false
 
@@ -237,9 +238,11 @@ func (hp *HtmlParser) internalParse() {
 	var c rune
 	hp.origRunes = []rune(hp.OrigHtml)
 	l := len(hp.origRunes)
+	//fmt.Printf("Len: %v\n", l)
 	len1 := l - 1
 
 	for p := 0; p < l; p++ {
+		//fmt.Printf("p=%v | last=%v\n", p, last)
 		if hp.stop {
 			return
 		}
@@ -255,6 +258,7 @@ func (hp *HtmlParser) internalParse() {
 			if hp.HasValidSyntax && len(openedTags) > 0 {
 				parent = openedTags[len(openedTags)-1]
 			}
+			//fmt.Printf("1-[%v:%v]\n", last, diff + last)
 			text2 := string(hp.origRunes[last : diff+last])
 			if hasContent(text2) {
 				anyContent = true
@@ -279,6 +283,7 @@ func (hp *HtmlParser) internalParse() {
 			break // fatal syntax error
 		}
 		ecl := utf8.RuneCountInString(elem)
+		//fmt.Printf("ecl=%v | elem='%v'\n", ecl, elem)
 		p += ecl - 1
 		if ecl <= 2 {
 			// bad HTML, like "<>"
@@ -301,9 +306,11 @@ func (hp *HtmlParser) internalParse() {
 			anyContent = true
 			// This is a closing tag
 			tag := parseClosingTag(elem)
+			//fmt.Printf("309tag: %v\n", tag)
 
 			if hp.HasValidSyntax {
 				hp.unwindForClose(tag, &openedTags, &openedBlocks)
+				//fmt.Printf("313-openTags: %v | openedBlocks: %v\n", openedTags, openedBlocks)
 				if hp.stop {
 					return
 				}
@@ -326,6 +333,7 @@ func (hp *HtmlParser) internalParse() {
 						hp.addError("Missing end comment -->")
 						break
 					}
+					//fmt.Printf("2-[%v:%v]\n", p, ec + 3)
 					text = string(hp.origRunes[p : ec+3])
 					if !hp.SkipComments {
 						hp.callText(text, nil)
@@ -367,6 +375,7 @@ func (hp *HtmlParser) internalParse() {
 				if present {
 					hp.addWarning("Duplicate id: " + he.Id + " - Element: " + he.OriginalOpenTag)
 				}
+				hp.Ids[he.Id] = true
 			}
 
 			if he.SyntaxError {
@@ -422,6 +431,7 @@ func (hp *HtmlParser) internalParse() {
 					}
 				}
 
+				//fmt.Printf("3-[%v:%v]\n", startScript, endScript)
 				hp.callText(string(hp.origRunes[startScript:endScript]), he)
 				if hp.stop {
 					return
@@ -541,14 +551,19 @@ func (hp *HtmlParser) internalParse() {
 		}
 	} // for loop
 
+	//fmt.Printf("554-Out\n")
+
 	if !fatal {
 		// commit the last piece of text
 		parent = nil
+		//fmt.Printf("559\n")
 		if hp.HasValidSyntax && len(openedTags) > 0 {
 			parent = openedTags[len(openedTags)-1]
 		}
 
+		//fmt.Printf("564\n")
 		if last < l {
+			//fmt.Printf("564-[%v:]\n", last)
 			text = string(hp.origRunes[last:])
 			hp.callText(text, parent)
 			if hp.stop {
@@ -556,7 +571,9 @@ func (hp *HtmlParser) internalParse() {
 			}
 		}
 
+		//fmt.Printf("574\n")
 		if hp.HasValidSyntax {
+			//fmt.Printf("576-openedTags: %v %v\n", len(openedTags), openedTags)
 			for len(openedTags) > 0 {
 				parent = openedTags[len(openedTags)-1]
 				if parent.ElementInfo == nil || parent.ElementInfo.TagFormatting != HTFOptionalClosing {
@@ -578,7 +595,10 @@ func (hp *HtmlParser) internalParse() {
 				}
 			}
 		}
+		//fmt.Printf("598\n")
 	}
+
+	//fmt.Printf("596-OUt\n")
 
 	if hp.HasValidSyntax {
 		if len(openedBlocks) > 0 {
@@ -623,6 +643,7 @@ func (hp *HtmlParser) unwindForClose(tag string, openedTags, openedBlocks *[]*Ht
 		hp.addError("Closing tag without opening: " + tag)
 		return
 	}
+	//fmt.Printf("637-Parent:%v\n", parent)
 
 	firstParent := parent.TagNameNS
 
@@ -630,9 +651,12 @@ func (hp *HtmlParser) unwindForClose(tag string, openedTags, openedBlocks *[]*Ht
 		blockParent = (*openedBlocks)[len(*openedBlocks)-1]
 	}
 
+	//fmt.Printf("645-openTags: %v | openedBlocks: %v\n", *openedTags, *openedBlocks)
+
 	for parent != nil {
 		if parent.TagNameNS == tag {
 			*openedTags = (*openedTags)[:len(*openedTags)-1]
+			//fmt.Printf("648-openTags: %v | openedBlocks: %v\n", *openedTags, *openedBlocks)
 			if blockParent != nil && blockParent.TagNameNS == tag {
 				*openedBlocks = (*openedBlocks)[:len(*openedBlocks)-1]
 			}

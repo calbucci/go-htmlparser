@@ -226,7 +226,7 @@ func (he *HtmlElement) AddAttribute(attrName, attrVal string) {
 	}
 
 	if len(attrVal) > 0 {
-		attrVal = html.EscapeString(attrVal)
+		attrVal = html.UnescapeString(attrVal)
 	}
 
 	he.Attributes[attrName] = attrVal
@@ -403,7 +403,7 @@ func parseClosingTag(elem string) string {
 		return ""
 	}
 
-	for p, c := range elem[2:] {
+	for p, c := range elem {
 
 		if c == '>' || unicode.IsSpace(c) {
 
@@ -440,7 +440,6 @@ func HtmlAttributeEncode(attributeValue string) string {
 		switch c {
 		case '&':
 			n.WriteString("&amp;")
-
 		case '"':
 			n.WriteString("&quot;")
 		default:
@@ -545,7 +544,9 @@ func internalBuildOpenTag(ei *HtmlElementInfo, tagName string, attributes map[st
 
 		if len(value) > 0 {
 			encoded := html.EscapeString(value)
+			n.WriteRune('"')
 			n.WriteString(encoded)
+			n.WriteRune('"')
 		}
 	}
 	if xmlEmptyTag {
