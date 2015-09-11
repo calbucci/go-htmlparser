@@ -15,6 +15,11 @@ const (
 	QTDouble
 )
 
+type attributeInfo struct {
+	Name string
+	Value string
+}
+
 type HtmlElement struct {
 	errors   *[]string
 	warnings *[]string
@@ -22,7 +27,7 @@ type HtmlElement struct {
 	TagName                 string
 	TagNameNS               string
 	Id                      string
-	Attributes              map[string]string
+	Attributes              []attributeInfo
 	ElementInfo             *HtmlElementInfo
 	Namespace               string
 	HasNamespace            bool
@@ -56,7 +61,7 @@ func NewHtmlElement(openElement string, parent *HtmlElement, errors, warnings *[
 	//	<div style="color:#fff">
 	//	<img src='/a/b/c'>
 
-	he.Attributes = make(map[string]string, 1)
+	he.Attributes = make([]attributeInfo, 0)
 
 	runes := []rune(openElement)
 	l := len(runes)
@@ -135,10 +140,13 @@ func (he *HtmlElement) GetCloseTag() string {
 	return "</" + he.TagNameNS + ">"
 }
 
-func (he *HtmlElement) GetAttributeValue(attrName string) string {
+func (he *HtmlElement) GetAttributeValue(attrName string) (string,bool) {
 
-	v, _ := he.Attributes[attrName]
-	return v
+	i := he.FindAttributeIndex(attrName)
+	if i >= 0 {
+		return he.Attributes[i].Value,true
+	}
+	return "",false
 
 }
 
@@ -152,17 +160,39 @@ func (he *HtmlElement) SetAttribute(attrName, attrValue string) bool {
 		return false
 	}
 
-	he.Attributes[attrName] = attrValue
+	i := he.FindAttributeIndex(attrName)
+	if i >= 0{
+		he.Attributes[i].Value = attrValue
+	}else{
+		he.AddAttribute(attrName, attrValue)
+	}
 	return true
 }
 
 func (he *HtmlElement) RemoveAttribute(attrName string) {
-	delete(he.Attributes, attrName)
+	i := he.FindAttributeIndex(attrName)
+	if i >= 0 {
+		he.Attributes = append(he.Attributes[:i], he.Attributes[i+1:]...)
+	}
 }
 
 func (he *HtmlElement) HasAttribute(attrName string) bool {
-	_, ok := he.Attributes[attrName]
-	return ok
+	return he.FindAttributeIndex(attrName) >= 0
+}
+
+func (he *HtmlElement) FindAttributeIndex(attrName string) int {
+	if(len(he.Attributes) == 0 || attrName == ""){
+		return -1;
+	}
+
+	attrName = strings.ToLower(attrName)
+
+	for i,a := range he.Attributes {
+		if(a.Name == attrName){
+			return i
+		}
+	}
+	return -1;
 }
 
 func (he *HtmlElement) checkTag() {
@@ -229,7 +259,7 @@ func (he *HtmlElement) AddAttribute(attrName, attrVal string) {
 		attrVal = html.UnescapeString(attrVal)
 	}
 
-	he.Attributes[attrName] = attrVal
+	he.Attributes = append(he.Attributes, attributeInfo{attrName, attrVal})
 }
 
 func squeezeSpaces(s string) string {
@@ -413,11 +443,11 @@ func parseClosingTag(elem string) string {
 	return strings.ToLower(strings.TrimSpace(elem))
 }
 
-func BuildOpenTagHEI(ei *HtmlElementInfo, attributes map[string]string, noEvents, noUnknownAttributes bool) string {
+func BuildOpenTagHEI(ei *HtmlElementInfo, attributes []attributeInfo, noEvents, noUnknownAttributes bool) string {
 	return internalBuildOpenTag(ei, ei.TagName, attributes, noEvents, noUnknownAttributes, false)
 }
 
-func BuildOpenTag(tagName string, attributes map[string]string, noEvents, noUnknownAttributes bool) string {
+func BuildOpenTag(tagName string, attributes []attributeInfo, noEvents, noUnknownAttributes bool) string {
 	var ei *HtmlElementInfo
 	if noUnknownAttributes {
 		ei = GetElementInfo(tagName)
@@ -514,7 +544,7 @@ func cleanStyleAttr(style string) string {
 
 }
 
-func internalBuildOpenTag(ei *HtmlElementInfo, tagName string, attributes map[string]string, noEvents, noUnknownAttributes, xmlEmptyTag bool) string {
+func internalBuildOpenTag(ei *HtmlElementInfo, tagName string, attributes []attributeInfo, noEvents, noUnknownAttributes, xmlEmptyTag bool) string {
 	if !noUnknownAttributes {
 		ei = nil
 	}
@@ -524,26 +554,27 @@ func internalBuildOpenTag(ei *HtmlElementInfo, tagName string, attributes map[st
 	n.WriteRune('<')
 	n.WriteString(tagName)
 
-	for name, value := range attributes {
+	for _,a := range attributes {
 
-		if name == "" || noEvents && strings.HasPrefix(name, "on") {
+		if a.Name == "" || noEvents && strings.HasPrefix(a.Name, "on") {
 			continue
 		}
 
-		if ei != nil && ei.GetAttributeStatus(name) == ASUnknown {
+		if ei != nil && ei.GetAttributeStatus(a.Name) == ASUnknown {
 			continue
-		}
-
-		if value == "" {
-			continue // Empty attribute (valid on HTML5 and above)
 		}
 
 		n.WriteRune(' ')
-		n.WriteString(name)
+		n.WriteString(a.Name)
+		if a.Value == "" {
+
+			continue // Empty attribute (valid on HTML5 and above)
+		}
+
 		n.WriteRune('=')
 
-		if len(value) > 0 {
-			encoded := html.EscapeString(value)
+		if len(a.Value) > 0 {
+			encoded := html.EscapeString(a.Value)
 			n.WriteRune('"')
 			n.WriteString(encoded)
 			n.WriteRune('"')

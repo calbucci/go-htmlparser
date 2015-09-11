@@ -5,7 +5,7 @@ import (
 	"bytes"
 	"html"
 	"strings"
-	"fmt"
+	//"fmt"
 	"testing"
 )
 
@@ -208,10 +208,10 @@ func Test_UrlAttribute(t *testing.T) {
 			if len(e.Attributes) != 4 {
 				t.Error()
 			}
-			if e.GetAttributeValue("title") != "M-Shaped Brain » Feed" {
+			if title,_ := e.GetAttributeValue("title"); title != "M-Shaped Brain » Feed" {
 				t.Error()
 			}
-			if e.GetAttributeValue("href") != "http://blog.calbucci.com/feed/" {
+			if href,_ := e.GetAttributeValue("href"); href != "http://blog.calbucci.com/feed/" {
 				t.Error()
 			}
 
@@ -233,9 +233,9 @@ func Test_FindRSSFeed(t *testing.T) {
 	parser.Parse(nil, func(e *HtmlElement, isEmpty bool) {
 		if e.TagName == "link" {
 
-			if e.GetAttributeValue("type") == "application/rss+xml" {
+			if ty,_ := e.GetAttributeValue("type"); ty == "application/rss+xml" {
 				t.Logf("rss-e: %v %v\n", e.TagName, e.Attributes)
-				rssFeed = e.GetAttributeValue("href")
+				rssFeed,_ = e.GetAttributeValue("href")
 				parser.Stop()
 			}
 		}
@@ -250,20 +250,38 @@ func Test_FindRSSFeed(t *testing.T) {
 
 
 func Test_Idempotent(t *testing.T) {
-	html1 := parseAndSerialize(blogPost)
-	//html1 := parseAndSerialize(`<b>\n <link rel="alternate" type="application/rss+xml" title="M-Shaped Brain &raquo; Feed" href="http://blog.calbucci.com/feed/" /> </b>`)
-	//html1 := parseAndSerialize(`<b><link rel="alternate" type="application/rss+xml" title="M-Shaped Brain Feed" href="http://blog.calbucci.com/feed/"/></b>`)
-	//t.Logf(html1)
+	baseHtml := blogPost
+	html1 := parseAndSerialize(baseHtml)
 	html2 := parseAndSerialize(html1)
 	html3 := parseAndSerialize(html2)
 
 	if html1 != html2 {
+
+		max := len(html1)
+		if max > len(html2) {
+			max = len(html2)
+		}
+		for i:= 0; i < max; i++ {
+			if(html1[i] != html2[i]){
+				i -= 20
+				if i < 0 {
+					i = 0
+				}
+				e := i + 30
+				if e > max {
+					e = max
+				}
+				t.Logf("Mismatch1: %v\n", html1[i:e])
+				t.Logf("Mismatch2: %v\n", html2[i:e])
+				break
+			}
+		}
+
 		t.Error()
 	}
 	if html2 != html3 {
 		t.Error()
 	}
-
 }
 
 func parseAndSerialize(origHtml string) string {
@@ -279,10 +297,6 @@ func parseAndSerialize(origHtml string) string {
 	},
 		func(parent *HtmlElement, isEmptyTag bool) {
 			n.WriteString(parent.GetOpenTag(false, false))
-			if(parent.TagName == "link"){
-				rel := parent.GetAttributeValue("rel")
-				fmt.Println(rel, len(rel))
-			}
 		},
 		func(closeTag string) {
 			n.WriteString("</" + closeTag + ">")
@@ -299,11 +313,11 @@ func Test_FindOpenGraphTags(t *testing.T) {
 
 	parser.Parse(nil, func(element *HtmlElement, isEmptyTag bool) {
 		if element.TagName == "meta" {
-			ogName := element.GetAttributeValue("property")
+			ogName,_ := element.GetAttributeValue("property")
 			if ogName == "" || !strings.HasPrefix(ogName, "og:") {
 				return
 			}
-			ogValue := element.GetAttributeValue("content")
+			ogValue,_ := element.GetAttributeValue("content")
 			tags[ogName] = ogValue
 		}
 	}, nil)

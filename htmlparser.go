@@ -180,6 +180,8 @@ func (p *HtmlParser) callText(text string, parent *HtmlElement) {
 		text = n.String()
 	}
 
+	text = html.UnescapeString(text)
+
 	if p.textCallback != nil {
 		p.textCallback(text, parent)
 		if p.stop {
@@ -348,6 +350,7 @@ func (hp *HtmlParser) internalParse() {
 				}
 				// Looks like a doctype
 				e2 := strings.ToLower(elem)
+				//fmt.Printf("351-e2=%v\n", e2)
 				if strings.HasPrefix(e2, "<!doctype ") {
 					if anyContent {
 						hp.HasValidSyntax = false
