@@ -1,5 +1,6 @@
 package htmlparser
 
+// AttrStatus indicate a status of an attribute
 type AttrStatus uint8
 
 const (
@@ -8,6 +9,7 @@ const (
 	ASUnknown
 )
 
+// Type of HTML Element according to the HTML 5.0 spec
 type HtmlElementType uint8
 
 const (

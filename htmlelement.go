@@ -16,7 +16,7 @@ const (
 )
 
 type attributeInfo struct {
-	Name string
+	Name  string
 	Value string
 }
 
@@ -140,13 +140,13 @@ func (he *HtmlElement) GetCloseTag() string {
 	return "</" + he.TagNameNS + ">"
 }
 
-func (he *HtmlElement) GetAttributeValue(attrName string) (string,bool) {
+func (he *HtmlElement) GetAttributeValue(attrName string) (string, bool) {
 
 	i := he.FindAttributeIndex(attrName)
 	if i >= 0 {
-		return he.Attributes[i].Value,true
+		return he.Attributes[i].Value, true
 	}
-	return "",false
+	return "", false
 
 }
 
@@ -161,9 +161,9 @@ func (he *HtmlElement) SetAttribute(attrName, attrValue string) bool {
 	}
 
 	i := he.FindAttributeIndex(attrName)
-	if i >= 0{
+	if i >= 0 {
 		he.Attributes[i].Value = attrValue
-	}else{
+	} else {
 		he.AddAttribute(attrName, attrValue)
 	}
 	return true
@@ -181,18 +181,18 @@ func (he *HtmlElement) HasAttribute(attrName string) bool {
 }
 
 func (he *HtmlElement) FindAttributeIndex(attrName string) int {
-	if(len(he.Attributes) == 0 || attrName == ""){
-		return -1;
+	if len(he.Attributes) == 0 || attrName == "" {
+		return -1
 	}
 
 	attrName = strings.ToLower(attrName)
 
-	for i,a := range he.Attributes {
-		if(a.Name == attrName){
+	for i, a := range he.Attributes {
+		if a.Name == attrName {
 			return i
 		}
 	}
-	return -1;
+	return -1
 }
 
 func (he *HtmlElement) checkTag() {
@@ -554,7 +554,7 @@ func internalBuildOpenTag(ei *HtmlElementInfo, tagName string, attributes []attr
 	n.WriteRune('<')
 	n.WriteString(tagName)
 
-	for _,a := range attributes {
+	for _, a := range attributes {
 
 		if a.Name == "" || noEvents && strings.HasPrefix(a.Name, "on") {
 			continue

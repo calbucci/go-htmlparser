@@ -1,6 +1,5 @@
 package htmlparser
 
-
 import (
 	"bytes"
 	"html"
@@ -39,7 +38,6 @@ func Test_OptionalClosing(t *testing.T) {
 			"a<p>b<b>c</b>d<p>e",
 		})
 }
-
 
 func Test_OptionalClosingWithBlockElement(t *testing.T) {
 	testSegments(t, true, []string{
@@ -208,10 +206,10 @@ func Test_UrlAttribute(t *testing.T) {
 			if len(e.Attributes) != 4 {
 				t.Error()
 			}
-			if title,_ := e.GetAttributeValue("title"); title != "M-Shaped Brain » Feed" {
+			if title, _ := e.GetAttributeValue("title"); title != "M-Shaped Brain » Feed" {
 				t.Error()
 			}
-			if href,_ := e.GetAttributeValue("href"); href != "http://blog.calbucci.com/feed/" {
+			if href, _ := e.GetAttributeValue("href"); href != "http://blog.calbucci.com/feed/" {
 				t.Error()
 			}
 
@@ -225,7 +223,6 @@ func Test_UrlAttribute(t *testing.T) {
 
 }
 
-
 func Test_FindRSSFeed(t *testing.T) {
 	rssFeed := ""
 	parser := NewParser(blogPost)
@@ -233,9 +230,9 @@ func Test_FindRSSFeed(t *testing.T) {
 	parser.Parse(nil, func(e *HtmlElement, isEmpty bool) {
 		if e.TagName == "link" {
 
-			if ty,_ := e.GetAttributeValue("type"); ty == "application/rss+xml" {
+			if ty, _ := e.GetAttributeValue("type"); ty == "application/rss+xml" {
 				t.Logf("rss-e: %v %v\n", e.TagName, e.Attributes)
-				rssFeed,_ = e.GetAttributeValue("href")
+				rssFeed, _ = e.GetAttributeValue("href")
 				parser.Stop()
 			}
 		}
@@ -247,7 +244,6 @@ func Test_FindRSSFeed(t *testing.T) {
 	}
 
 }
-
 
 func Test_Idempotent(t *testing.T) {
 	baseHtml := blogPost
@@ -261,8 +257,8 @@ func Test_Idempotent(t *testing.T) {
 		if max > len(html2) {
 			max = len(html2)
 		}
-		for i:= 0; i < max; i++ {
-			if(html1[i] != html2[i]){
+		for i := 0; i < max; i++ {
+			if html1[i] != html2[i] {
 				i -= 20
 				if i < 0 {
 					i = 0
@@ -294,14 +290,11 @@ func parseAndSerialize(origHtml string) string {
 	parser.Parse(func(text string, parent *HtmlElement) {
 		escaped := html.EscapeString(text)
 		n.WriteString(escaped)
-	},
-		func(parent *HtmlElement, isEmptyTag bool) {
-			n.WriteString(parent.GetOpenTag(false, false))
-		},
-		func(closeTag string) {
-			n.WriteString("</" + closeTag + ">")
-
-		})
+	}, func(parent *HtmlElement, isEmptyTag bool) {
+		n.WriteString(parent.GetOpenTag(false, false))
+	}, func(closeTag string) {
+		n.WriteString("</" + closeTag + ">")
+	})
 
 	return n.String()
 }
@@ -313,11 +306,11 @@ func Test_FindOpenGraphTags(t *testing.T) {
 
 	parser.Parse(nil, func(element *HtmlElement, isEmptyTag bool) {
 		if element.TagName == "meta" {
-			ogName,_ := element.GetAttributeValue("property")
+			ogName, _ := element.GetAttributeValue("property")
 			if ogName == "" || !strings.HasPrefix(ogName, "og:") {
 				return
 			}
-			ogValue,_ := element.GetAttributeValue("content")
+			ogValue, _ := element.GetAttributeValue("content")
 			tags[ogName] = ogValue
 		}
 	}, nil)
@@ -336,9 +329,8 @@ func Test_FindOpenGraphTags(t *testing.T) {
 
 }
 
-
 func testSegments(t *testing.T, result bool, segments []string) {
-	for _,segment := range segments {
+	for _, segment := range segments {
 		t.Logf("Processing: %v\n", segment)
 		parser := NewParser(segment)
 		if parser.Parse(nil, nil, nil) != result {

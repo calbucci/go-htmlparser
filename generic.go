@@ -31,6 +31,7 @@ func union(slice1, slice2 []string) []string {
 	return slice1
 }
 
+// sorted_contains check if a string is present in a slice using binary search
 func sorted_contains(slice []string, element string) bool {
 	if slice == nil || len(slice) == 0 {
 		return false
@@ -39,6 +40,7 @@ func sorted_contains(slice []string, element string) bool {
 	return pos != len(slice) && slice[pos] == element
 }
 
+// contains check if a string is present in a slice
 func contains(s []string, e string) bool {
 	for _, a := range s {
 		if a == e {
@@ -48,6 +50,7 @@ func contains(s []string, e string) bool {
 	return false
 }
 
+// convertSemicolonDelimited converts a semi-colon delimited string into a slice of strings and sort them
 func convertSemicolonDelimited(text string) []string {
 	if len(text) > 0 {
 		strList := strings.Split(text, ";")
@@ -62,6 +65,7 @@ func convertSemicolonDelimited(text string) []string {
 	return nil
 }
 
+// runesLastIndex finds the last occurrance of a rune r in the sequence runes
 func runesLastIndex(runes []rune, r rune) int {
 
 	for i := len(runes) - 1; i >= 0; i-- {
@@ -72,6 +76,7 @@ func runesLastIndex(runes []rune, r rune) int {
 	return -1
 }
 
+// runesIndex finds the first occurance of rune r in the sequence runes
 func runesIndex(runes []rune, r rune) int {
 	for i, v := range runes {
 		if v == r {
@@ -81,10 +86,11 @@ func runesIndex(runes []rune, r rune) int {
 	return -1
 }
 
+// runesIndexRunesStart finds the first occurrance of the sequence sub inside of runes start at position start
 func runesIndexRunesStart(runes []rune, sub []rune, start int) int {
 
 	max := len(runes) - len(sub)
-	if(len(sub)==0 || max < 0){
+	if len(sub) == 0 || max < 0 {
 		return -1
 	}
 
@@ -105,6 +111,7 @@ func runesIndexRunesStart(runes []rune, sub []rune, start int) int {
 	return -1
 }
 
+// trimInBetween converts all whitespace to a space and remove duplicate sequences of spaces
 func trimInBetween(str string) string {
 	if str == "" {
 		return str
@@ -129,6 +136,7 @@ func trimInBetween(str string) string {
 	return n.String()
 }
 
+// hasContent indicates if a string has any character that's not a whitespace or control character
 func hasContent(text string) bool {
 	if len(text) == 0 {
 		return false
