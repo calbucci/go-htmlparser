@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"html"
 	"strings"
+
 	//"fmt"
 	"testing"
 )
@@ -245,6 +246,130 @@ func Test_FindRSSFeed(t *testing.T) {
 
 }
 
+func Test_NewLineEndline(t *testing.T) {
+	html1 := "<br>\n"
+	html2 := parseAndSerializeEndline(html1, false)
+	html1 = "<br>\\n"
+	html2 = strings.ReplaceAll(html2, "\n", "\\n")
+	if html1 != html2 {
+
+		max := len(html1)
+		if max > len(html2) {
+			max = len(html2)
+		}
+		for i := 0; i < max; i++ {
+			if html1[i] != html2[i] {
+				i -= 20
+				if i < 0 {
+					i = 0
+				}
+				e := i + 30
+				if e > max {
+					e = max
+				}
+				t.Logf("Mismatch1: %v\n", html1[i:e])
+				t.Logf("Mismatch2: %v\n", html2[i:e])
+				break
+			}
+		}
+
+		t.Error()
+	}
+}
+
+func Test_NewLineEndline1(t *testing.T) {
+	html1 := "<body>\n\n</body>"
+	html2 := parseAndSerializeEndline(html1, false)
+	html1 = "<body>\\n</body>"
+	html2 = strings.ReplaceAll(html2, "\n", "\\n")
+	if html1 != html2 {
+
+		max := len(html1)
+		if max > len(html2) {
+			max = len(html2)
+		}
+		for i := 0; i < max; i++ {
+			if html1[i] != html2[i] {
+				i -= 20
+				if i < 0 {
+					i = 0
+				}
+				e := i + 30
+				if e > max {
+					e = max
+				}
+				t.Logf("Mismatch1: %v\n", html1[i:e])
+				t.Logf("Mismatch2: %v\n", html2[i:e])
+				break
+			}
+		}
+
+		t.Error()
+	}
+}
+
+func Test_NewLineEndline2(t *testing.T) {
+	html1 := "<table><tr>\n<!-- Comment --><td>\n\na\n</td>\n \n</table>"
+	html2 := parseAndSerializeEndline(html1, false)
+	html1 = "<table><tr>\\n<td>  a </td>\\n</table>"
+	html2 = strings.ReplaceAll(html2, "\n", "\\n")
+	if html1 != html2 {
+
+		max := len(html1)
+		if max > len(html2) {
+			max = len(html2)
+		}
+		for i := 0; i < max; i++ {
+			if html1[i] != html2[i] {
+				i -= 20
+				if i < 0 {
+					i = 0
+				}
+				e := i + 30
+				if e > max {
+					e = max
+				}
+				t.Logf("Mismatch1: %v\n", html1[i:e])
+				t.Logf("Mismatch2: %v\n", html2[i:e])
+				break
+			}
+		}
+
+		t.Error()
+	}
+}
+
+func Test_NewLineEndlinePreserve(t *testing.T) {
+	html1 := "<table><tr>\n<!-- Comment --><td>\n\na\n</td>\n \n</table>"
+	html2 := parseAndSerializeEndline(html1, true)
+	html1 = "<table><tr>\\n<td>\\n\\na\\n</td>\\n</table>"
+	html2 = strings.ReplaceAll(html2, "\n", "\\n")
+	if html1 != html2 {
+
+		max := len(html1)
+		if max > len(html2) {
+			max = len(html2)
+		}
+		for i := 0; i < max; i++ {
+			if html1[i] != html2[i] {
+				i -= 20
+				if i < 0 {
+					i = 0
+				}
+				e := i + 30
+				if e > max {
+					e = max
+				}
+				t.Logf("Mismatch1: %v\n", html1[i:e])
+				t.Logf("Mismatch2: %v\n", html2[i:e])
+				break
+			}
+		}
+
+		t.Error()
+	}
+}
+
 func Test_Idempotent(t *testing.T) {
 	baseHtml := blogPost
 	html1 := parseAndSerialize(baseHtml)
@@ -294,6 +419,31 @@ func parseAndSerialize(origHtml string) string {
 		n.WriteString(parent.GetOpenTag(false, false))
 	}, func(closeTag string) {
 		n.WriteString("</" + closeTag + ">")
+	})
+
+	return n.String()
+}
+
+func parseAndSerializeEndline(origHtml string, preserveCRLFTab bool) string {
+	parser := NewParser(origHtml)
+
+	parser.PreserveCRLFTab = preserveCRLFTab
+
+	n := bytes.NewBufferString("")
+
+	parser.ParseWithEndlines(func(text string, parent *HtmlElement) {
+		escaped := html.EscapeString(text)
+		n.WriteString(escaped)
+	}, func(parent *HtmlElement, isEmptyTag bool, endEndl bool) {
+		n.WriteString(parent.GetOpenTag(false, false))
+		if endEndl {
+			n.WriteRune('\n')
+		}
+	}, func(closeTag string, endEndl bool) {
+		n.WriteString("</" + closeTag + ">")
+		if endEndl {
+			n.WriteRune('\n')
+		}
 	})
 
 	return n.String()

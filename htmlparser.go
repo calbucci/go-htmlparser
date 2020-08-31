@@ -17,6 +17,9 @@ type TextCallback func(string, *HtmlElement)
 type ElementCallback func(*HtmlElement, bool)
 type EndElementCallback func(string)
 
+type ElementCallbackEndl func(*HtmlElement, bool, bool)
+type EndElementCallbackEndl func(string, bool)
+
 type HtmlParser struct {
 	OrigHtml  string
 	origRunes []rune
@@ -25,6 +28,9 @@ type HtmlParser struct {
 	textCallback       TextCallback
 	elementCallback    ElementCallback
 	endElementCallback EndElementCallback
+
+	elementCallbackEndl    ElementCallbackEndl
+	endElementCallbackEndl EndElementCallbackEndl
 
 	Errors   []string
 	Warnings []string
@@ -79,7 +85,47 @@ func (parser *HtmlParser) Parse(textCallback TextCallback, elementCallback Eleme
 
 	parser.textCallback = textCallback
 	parser.elementCallback = elementCallback
+	parser.elementCallbackEndl = nil
 	parser.endElementCallback = endElementCallback
+	parser.endElementCallbackEndl = nil
+
+	parser.HasValidSyntax = true
+	parser.HasOnlyValidTags = true
+	parser.HasOnlyValidAttributes = true
+	parser.HasDeprecatedAttributes = false
+	parser.HasDeprecatedTags = false
+	parser.HasOnlyKnownTags = true
+
+	parser.Errors = make([]string, 1)
+	parser.Warnings = make([]string, 1)
+	parser.Ids = make(map[string]bool, 1)
+
+	if parser.OrigHtml == "" {
+		return true
+	}
+
+	if strings.Index(parser.OrigHtml, "<") < 0 {
+		parser.callText(parser.OrigHtml, nil)
+	} else {
+		parser.internalParse()
+	}
+
+	parser.InnerText = html.UnescapeString(parser.innerTextBuilder.String())
+	parser.stop = true
+
+	return parser.HasValidSyntax
+}
+
+func (parser *HtmlParser) ParseWithEndlines(textCallback TextCallback, s ElementCallbackEndl, e EndElementCallbackEndl) bool {
+	if parser.stop {
+		return false
+	}
+
+	parser.textCallback = textCallback
+	parser.elementCallback = nil
+	parser.elementCallbackEndl = s
+	parser.endElementCallback = nil
+	parser.endElementCallbackEndl = e
 
 	parser.HasValidSyntax = true
 	parser.HasOnlyValidTags = true
@@ -122,6 +168,46 @@ func (parser *HtmlParser) IsValidHTML401() bool {
 
 func (parser *HtmlParser) Stop() {
 	parser.stop = true
+}
+
+func (p *HtmlParser) tagEndl(last *int, len int) bool {
+	if len > *last && p.origRunes[*last] == '\n' {
+		n := *last + 1
+		if n == len {
+			*last++
+			return true
+		}
+		for n < len {
+			if p.origRunes[n] == '<' {
+				break
+			}
+			n++
+		}
+		if n >= len-3 || p.OrigHtml[n+1:n+3] == "!--" {
+			return false
+		} else if n > *last+1 && hasContent(p.OrigHtml[*last:n]) {
+			return false
+		}
+		*last++
+		return true
+	}
+	return false
+}
+
+func (p *HtmlParser) callElement(parent *HtmlElement, isEmptyTag bool, withEndline bool, last *int, len int) {
+	if withEndline {
+		p.elementCallbackEndl(parent, isEmptyTag, p.tagEndl(last, len))
+	} else {
+		p.elementCallback(parent, isEmptyTag)
+	}
+}
+
+func (p *HtmlParser) callEndElement(closeTag string, withEndline bool, last *int, len int) {
+	if withEndline {
+		p.endElementCallbackEndl(closeTag, p.tagEndl(last, len))
+	} else {
+		p.endElementCallback(closeTag)
+	}
 }
 
 func (p *HtmlParser) callText(text string, parent *HtmlElement) {
@@ -243,6 +329,9 @@ func (hp *HtmlParser) internalParse() {
 	//fmt.Printf("Len: %v\n", l)
 	len1 := l - 1
 
+	elementEndl := hp.elementCallbackEndl != nil
+	endElementEndl := hp.endElementCallbackEndl != nil
+
 	for p := 0; p < l; p++ {
 		//fmt.Printf("p=%v | last=%v\n", p, last)
 		if hp.stop {
@@ -317,8 +406,8 @@ func (hp *HtmlParser) internalParse() {
 					return
 				}
 			}
-			if hp.endElementCallback != nil {
-				hp.endElementCallback(tag)
+			if endElementEndl || hp.endElementCallback != nil {
+				hp.callEndElement(tag, endElementEndl, &last, l)
 				if hp.stop {
 					return
 				}
@@ -427,8 +516,8 @@ func (hp *HtmlParser) internalParse() {
 				}
 				p = cp - 1
 
-				if hp.elementCallback != nil {
-					hp.elementCallback(he, false)
+				if elementEndl || hp.elementCallback != nil {
+					hp.callElement(he, false, elementEndl, &last, l)
 					if hp.stop {
 						return
 					}
@@ -440,8 +529,8 @@ func (hp *HtmlParser) internalParse() {
 					return
 				}
 
-				if hp.endElementCallback != nil {
-					hp.endElementCallback(he.TagNameNS)
+				if endElementEndl || hp.endElementCallback != nil {
+					hp.callEndElement(he.TagNameNS, endElementEndl, &last, l)
 					if hp.stop {
 						return
 					}
@@ -459,15 +548,15 @@ func (hp *HtmlParser) internalParse() {
 					hp.addWarning("Unknown tag: " + he.TagNameNS)
 					// Really unknown and invalid tag
 					if he.XmlEmptyTag {
-						if hp.elementCallback != nil {
-							hp.elementCallback(he, true)
+						if elementEndl || hp.elementCallback != nil {
+							hp.callElement(he, true, elementEndl, &last, l)
 							if hp.stop {
 								return
 							}
 						}
 					} else {
-						if hp.elementCallback != nil {
-							hp.elementCallback(he, false)
+						if elementEndl || hp.elementCallback != nil {
+							hp.callElement(he, false, elementEndl, &last, l)
 							if hp.stop {
 								return
 							}
@@ -479,15 +568,15 @@ func (hp *HtmlParser) internalParse() {
 				} else {
 					// it is unknown, but correctly declared in an XML namespace
 					if he.XmlEmptyTag {
-						if hp.elementCallback != nil {
-							hp.elementCallback(he, true)
+						if elementEndl || hp.elementCallback != nil {
+							hp.callElement(he, true, elementEndl, &last, l)
 							if hp.stop {
 								return
 							}
 						}
 					} else {
-						if hp.elementCallback != nil {
-							hp.elementCallback(he, false)
+						if elementEndl || hp.elementCallback != nil {
+							hp.callElement(he, false, elementEndl, &last, l)
 							if hp.stop {
 								return
 							}
@@ -505,8 +594,8 @@ func (hp *HtmlParser) internalParse() {
 
 				// It's  known tag
 				if he.ElementInfo.TagFormatting == HTFSingle || he.XmlEmptyTag {
-					if hp.elementCallback != nil {
-						hp.elementCallback(he, true)
+					if elementEndl || hp.elementCallback != nil {
+						hp.callElement(he, true, elementEndl, &last, l)
 						if hp.stop {
 							return
 						}
@@ -525,8 +614,8 @@ func (hp *HtmlParser) internalParse() {
 									hp.addWarning("Invalid parent for " + blockParent.TagName + " (inside of " + parent.TagName + ")")
 								} else {
 									if he.TagName == blockParent.TagName {
-										if hp.endElementCallback != nil {
-											hp.endElementCallback(parent.TagNameNS)
+										if endElementEndl || hp.endElementCallback != nil {
+											hp.callEndElement(parent.TagNameNS, endElementEndl, &last, l)
 											if hp.stop {
 												return
 											}
@@ -544,8 +633,8 @@ func (hp *HtmlParser) internalParse() {
 							openedTags = append(openedTags, he)
 						}
 					}
-					if hp.elementCallback != nil {
-						hp.elementCallback(he, false)
+					if elementEndl || hp.elementCallback != nil {
+						hp.callElement(he, false, elementEndl, &last, l)
 					}
 
 				}
@@ -582,8 +671,8 @@ func (hp *HtmlParser) internalParse() {
 				if parent.ElementInfo == nil || parent.ElementInfo.TagFormatting != HTFOptionalClosing {
 					break
 				}
-				if hp.endElementCallback != nil {
-					hp.endElementCallback(parent.TagNameNS)
+				if endElementEndl || hp.endElementCallback != nil {
+					hp.callEndElement(parent.TagNameNS, endElementEndl, &last, l)
 					if hp.stop {
 						return
 					}
@@ -619,8 +708,8 @@ func (hp *HtmlParser) internalParse() {
 						hp.addError("Missing a close tag for a block-element. Opened Tag: " + parent.TagNameNS)
 						break
 					}
-					if hp.endElementCallback != nil {
-						hp.endElementCallback(parent.TagNameNS)
+					if endElementEndl || hp.endElementCallback != nil {
+						hp.callEndElement(parent.TagNameNS, endElementEndl, &last, l)
 						if hp.stop {
 							return
 						}
@@ -677,7 +766,7 @@ func (hp *HtmlParser) unwindForClose(tag string, openedTags, openedBlocks *[]*Ht
 
 		// inject the optional closing tag
 		if hp.endElementCallback != nil {
-			hp.endElementCallback(parent.TagNameNS)
+			hp.callEndElement(parent.TagNameNS, false, nil, 0)
 			if hp.stop {
 				return
 			}
